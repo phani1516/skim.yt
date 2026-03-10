@@ -36,6 +36,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# python backend
+skim-backend/venv/
+skim-backend/.env
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
