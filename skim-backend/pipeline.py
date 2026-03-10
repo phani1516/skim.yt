@@ -25,17 +25,37 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash')
 
 def get_channel_uploads(channel_id):
-    """Fetches the latest videos from a channel using the incredibly cheap Playlist trick."""
-    # YouTube channel IDs start with UC. Their upload playlist replaces it with UU.
-    upload_playlist_id = channel_id.replace('UC', 'UU', 1) 
-    
-    request = youtube.playlistItems().list(
-        part="snippet",
-        playlistId=upload_playlist_id,
-        maxResults=3 # Only check the last 3 videos to save quota
-    )
-    response = request.execute()
-    return response.get('items', [])
+    """Fetches the latest videos from a channel. Resolves handles to real IDs if needed."""
+    try:
+        # If not a real channel ID (UC...), resolve via YouTube search API
+        if not channel_id.startswith('UC'):
+            search_query = channel_id.lstrip('@')
+            search_response = youtube.search().list(
+                part="snippet",
+                q=search_query,
+                type="channel",
+                maxResults=1
+            ).execute()
+            items = search_response.get('items', [])
+            if not items:
+                print(f"  ⚠️ Could not resolve handle '{channel_id}' to a channel ID")
+                return []
+            channel_id = items[0]['snippet']['channelId']
+            print(f"  🔗 Resolved to channel ID: {channel_id}")
+
+        # YouTube channel IDs start with UC. Their upload playlist replaces it with UU.
+        upload_playlist_id = channel_id.replace('UC', 'UU', 1)
+
+        request = youtube.playlistItems().list(
+            part="snippet",
+            playlistId=upload_playlist_id,
+            maxResults=3  # Only check the last 3 videos to save quota
+        )
+        response = request.execute()
+        return response.get('items', [])
+    except Exception as e:
+        print(f"  ❌ Error fetching uploads for '{channel_id}': {e}")
+        return []
 
 def get_transcript(video_id):
     """Fetches the auto-generated transcript using youtube-transcript-api v1.x."""

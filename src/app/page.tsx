@@ -31,7 +31,7 @@ export default async function Home() {
 
   return (
     <MobileLayout>
-      <SwipeDeck videos={sortedVideos} />
+      <SwipeDeck videos={sortedVideos} userId={user.id} />
     </MobileLayout>
   );
 }
