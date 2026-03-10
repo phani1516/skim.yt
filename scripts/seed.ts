@@ -1,7 +1,8 @@
 // Run: npx tsx scripts/seed.ts
 // Requires: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local
 
-import "dotenv/config";
+import { config } from "dotenv";
+config({ path: ".env.local" });
 import { createClient } from "@supabase/supabase-js";
 
 // Import mock data — use relative path since this runs outside Next.js
