@@ -89,23 +89,30 @@ export async function recordSwipe(
     if (error) throw error;
 }
 
-/** Add a channel by YouTube ID */
+/** Add a channel by YouTube ID (find-or-create to avoid RLS upsert issues) */
 export async function addChannel(
     supabase: SupabaseClient,
     youtubeId: string,
     name: string,
     avatarUrl?: string
 ) {
+    // First check if the channel already exists
+    const { data: existing } = await supabase
+        .from("channels")
+        .select("*")
+        .eq("youtube_id", youtubeId)
+        .maybeSingle();
+
+    if (existing) return existing;
+
+    // Only insert if it doesn't exist
     const { data, error } = await supabase
         .from("channels")
-        .upsert(
-            {
-                youtube_id: youtubeId,
-                name,
-                avatar_url: avatarUrl ?? null,
-            },
-            { onConflict: "youtube_id" }
-        )
+        .insert({
+            youtube_id: youtubeId,
+            name,
+            avatar_url: avatarUrl ?? null,
+        })
         .select()
         .single();
 
