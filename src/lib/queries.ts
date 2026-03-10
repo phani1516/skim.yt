@@ -1,10 +1,13 @@
-import { createClient } from "@/lib/supabase/client";
 import type { Video } from "@/data/mockVideos";
 
-/** Fetch videos for the user's subscribed channels (excluding already swiped videos) */
-export async function fetchFeedVideos(userId: string): Promise<Video[]> {
-    const supabase = createClient();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabaseClient = any;
 
+/** Fetch videos for the user's subscribed channels (excluding already swiped videos) */
+export async function fetchFeedVideos(
+    supabase: SupabaseClient,
+    userId: string
+): Promise<Video[]> {
     // 1. Get channels the user is subscribed to
     const { data: subs } = await supabase
         .from("user_channels")
@@ -44,12 +47,11 @@ export async function fetchFeedVideos(userId: string): Promise<Video[]> {
       channels ( name, avatar_url )
     `
         )
-        .in("channel_id", subscribedChannelIds) // Only from their subs
+        .in("channel_id", subscribedChannelIds)
         .order("published_at", { ascending: false })
         .limit(30);
 
     // Supabase throws an error if you pass an empty array to .not("id", "in", [])
-    // So we only apply the exclusion filter if they actually have swipe history
     if (swipedVideoIds.length > 0) {
         query = query.not("id", "in", `(${swipedVideoIds.join(",")})`);
     }
@@ -75,11 +77,11 @@ export async function fetchFeedVideos(userId: string): Promise<Video[]> {
 
 /** Record a swipe action */
 export async function recordSwipe(
+    supabase: SupabaseClient,
     userId: string,
     videoId: string,
     direction: "left" | "right"
 ) {
-    const supabase = createClient();
     const { error } = await supabase
         .from("swipe_history")
         .upsert({ user_id: userId, video_id: videoId, direction });
@@ -89,11 +91,11 @@ export async function recordSwipe(
 
 /** Add a channel by YouTube ID */
 export async function addChannel(
+    supabase: SupabaseClient,
     youtubeId: string,
     name: string,
     avatarUrl?: string
 ) {
-    const supabase = createClient();
     const { data, error } = await supabase
         .from("channels")
         .upsert({
@@ -110,10 +112,10 @@ export async function addChannel(
 
 /** Subscribe user to a channel */
 export async function subscribeToChannel(
+    supabase: SupabaseClient,
     userId: string,
     channelId: string
 ) {
-    const supabase = createClient();
     const { error } = await supabase
         .from("user_channels")
         .upsert({ user_id: userId, channel_id: channelId });
@@ -122,8 +124,10 @@ export async function subscribeToChannel(
 }
 
 /** Get user's subscribed channels */
-export async function getUserChannels(userId: string) {
-    const supabase = createClient();
+export async function getUserChannels(
+    supabase: SupabaseClient,
+    userId: string
+) {
     const { data, error } = await supabase
         .from("user_channels")
         .select("channels ( id, youtube_id, name, avatar_url )")

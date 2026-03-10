@@ -7,14 +7,18 @@ import AuthButton from "@/components/AuthButton";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // If the user is not logged in, force them to sign in
   if (!user) {
     return (
       <MobileLayout>
         <div className="flex flex-col items-center justify-center h-full gap-6">
-          <p className="text-white/60 font-medium">Please sign in to view your nuggets.</p>
+          <p className="text-white/60 font-medium">
+            Please sign in to view your nuggets.
+          </p>
           <AuthButton />
         </div>
       </MobileLayout>
@@ -22,7 +26,7 @@ export default async function Home() {
   }
 
   // If logged in, fetch their specific feed from the database
-  const rawVideos = await fetchFeedVideos(user.id);
+  const rawVideos = await fetchFeedVideos(supabase, user.id);
   const sortedVideos = roundRobinSort(rawVideos);
 
   return (

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createClient } from "@/lib/supabase/client";
 
 interface GlassSidebarProps {
     isOpen: boolean;
@@ -11,6 +12,7 @@ interface GlassSidebarProps {
 export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
     const [channelUrl, setChannelUrl] = useState("");
     const [channels, setChannels] = useState<string[]>([]);
+    const [syncing, setSyncing] = useState(false);
 
     const handleAddChannel = () => {
         if (channelUrl.trim()) {
@@ -21,6 +23,36 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") handleAddChannel();
+    };
+
+    const handleSyncGoogleSubs = async () => {
+        setSyncing(true);
+        try {
+            const supabase = createClient();
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+
+            if (!user) {
+                // Not logged in — trigger Google OAuth sign-in
+                await supabase.auth.signInWithOAuth({
+                    provider: "google",
+                    options: {
+                        redirectTo: `${window.location.origin}/auth/callback`,
+                    },
+                });
+                return;
+            }
+
+            // User is logged in — placeholder for future YouTube API sync
+            alert(
+                "Google Subs sync coming soon! For now, add channels manually using the input above."
+            );
+        } catch (err) {
+            console.error("Sync failed:", err);
+        } finally {
+            setSyncing(false);
+        }
     };
 
     return (
@@ -113,11 +145,23 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
                             </div>
 
                             {/* Sync Google subs */}
-                            <button className="sidebar__sync-btn">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <button
+                                className="sidebar__sync-btn"
+                                onClick={handleSyncGoogleSubs}
+                                disabled={syncing}
+                            >
+                                <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    className={syncing ? "animate-spin" : ""}
+                                >
                                     <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m0 0a9 9 0 0 1 9-9m-9 9a9 9 0 0 0 9 9" />
                                 </svg>
-                                Sync Google Subs
+                                {syncing ? "Syncing..." : "Sync Google Subs"}
                             </button>
 
                             {/* Added channels list */}
