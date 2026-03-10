@@ -49,7 +49,7 @@ def get_channel_uploads(channel_id):
         request = youtube.playlistItems().list(
             part="snippet",
             playlistId=upload_playlist_id,
-            maxResults=3  # Only check the last 3 videos to save quota
+            maxResults=10  # Check the last 10 videos per channel
         )
         response = request.execute()
         return response.get('items', [])
@@ -76,12 +76,13 @@ def extract_nuggets(transcript, title):
     Analyze this video transcript (Title: "{title}").
     
     Rule 1: If the video is mostly fluff, repetition, or has no highly actionable/novel tech insights, output exactly: {{"is_high_signal": false, "nuggets": []}}
-    Rule 2: If the video contains highly valuable, novel information, extract 3 to 5 concise, actionable bullet points. Do not use filler words.
+    Rule 2: If the video contains highly valuable, novel information, extract exactly 6 to 7 bullet points.
+    Rule 3: Each bullet point MUST be exactly one sentence long. Use simple, easy-to-read English. Do not use filler words.
     
     Output strictly valid JSON matching this schema:
     {{
       "is_high_signal": boolean,
-      "nuggets": ["point 1", "point 2", "point 3"]
+      "nuggets": ["point 1", "point 2", "point 3", "point 4", "point 5", "point 6"]
     }}
     
     Transcript: {transcript[:25000]}

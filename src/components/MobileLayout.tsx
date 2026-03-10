@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
 import GlassSidebar from "./GlassSidebar";
 
 interface MobileLayoutProps {
@@ -9,6 +10,40 @@ interface MobileLayoutProps {
 
 export default function MobileLayout({ children }: MobileLayoutProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [userInitial, setUserInitial] = useState("U");
+    const menuRef = useRef<HTMLDivElement>(null);
+    const supabase = createClient();
+
+    // Get user initial on mount
+    useEffect(() => {
+        async function loadUser() {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const name = user.user_metadata?.full_name || user.email || "User";
+                setUserInitial(name.charAt(0).toUpperCase());
+            }
+        }
+        loadUser();
+    }, [supabase]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        if (menuOpen) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [menuOpen]);
+
+    const handleSignOut = async () => {
+        await supabase.auth.signOut();
+        window.location.reload();
+    };
 
     return (
         <div className="mobile-layout">
@@ -30,10 +65,39 @@ export default function MobileLayout({ children }: MobileLayoutProps) {
                     <span className="mobile-header__title-yt">.yt</span>
                 </div>
 
-                {/* User avatar */}
-                <button className="mobile-header__avatar" aria-label="User profile">
-                    <span className="mobile-header__avatar-text">P</span>
-                </button>
+                {/* User avatar + dropdown */}
+                <div className="user-menu" ref={menuRef}>
+                    <button
+                        className="mobile-header__avatar"
+                        onClick={() => setMenuOpen(!menuOpen)}
+                        aria-label="User profile"
+                    >
+                        <span className="mobile-header__avatar-text">{userInitial}</span>
+                    </button>
+
+                    {menuOpen && (
+                        <div className="user-menu__dropdown">
+                            <button
+                                className="user-menu__item"
+                                onClick={() => {
+                                    alert("Settings is coming soon!");
+                                    setMenuOpen(false);
+                                }}
+                            >
+                                <span className="user-menu__icon">⚙️</span>
+                                Settings
+                            </button>
+                            <div className="user-menu__divider" />
+                            <button
+                                className="user-menu__item user-menu__item--danger"
+                                onClick={handleSignOut}
+                            >
+                                <span className="user-menu__icon">🚪</span>
+                                Sign Out
+                            </button>
+                        </div>
+                    )}
+                </div>
             </header>
 
             {/* Main content */}

@@ -1,12 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { Video } from "@/data/mockVideos";
 
 interface SkimCardProps {
     video: Video;
+    isFavorited?: boolean;
+    onToggleFavorite?: () => void;
 }
 
-export default function SkimCard({ video }: SkimCardProps) {
+export default function SkimCard({ video, isFavorited = false, onToggleFavorite }: SkimCardProps) {
+    const [avatarError, setAvatarError] = useState(false);
+
     return (
         <div className="skim-card">
             {/* Thumbnail background layer */}
@@ -20,18 +25,37 @@ export default function SkimCard({ video }: SkimCardProps) {
 
             {/* Glass content panel */}
             <div className="skim-card__glass-panel">
-                {/* Reflection pseudo-element handled via CSS ::after */}
-
-                {/* Channel info */}
+                {/* Channel info + favorite */}
                 <div className="skim-card__channel">
-                    <img
-                        src={video.channelAvatar}
-                        alt={video.channelName}
-                        className="skim-card__channel-avatar"
-                    />
+                    {!avatarError && video.channelAvatar ? (
+                        <img
+                            src={video.channelAvatar}
+                            alt={video.channelName}
+                            className="skim-card__channel-avatar"
+                            onError={() => setAvatarError(true)}
+                        />
+                    ) : (
+                        <div className="skim-card__channel-avatar-fallback">
+                            {video.channelName.charAt(0).toUpperCase()}
+                        </div>
+                    )}
                     <span className="skim-card__channel-name">{video.channelName}</span>
                     {video.isHighSignal && (
                         <span className="skim-card__signal-badge">★ High Signal</span>
+                    )}
+
+                    {/* Favorite button */}
+                    {onToggleFavorite && (
+                        <button
+                            className={`skim-card__favorite-btn ${isFavorited ? "skim-card__favorite-btn--active" : ""}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleFavorite();
+                            }}
+                            aria-label={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                        >
+                            {isFavorited ? "♥" : "♡"}
+                        </button>
                     )}
                 </div>
 

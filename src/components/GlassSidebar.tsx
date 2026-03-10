@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { addChannel, subscribeToChannel, getUserChannels } from "@/lib/queries";
+import { addChannel, subscribeToChannel, getUserChannels, removeChannel } from "@/lib/queries";
 
 interface GlassSidebarProps {
     isOpen: boolean;
@@ -65,6 +65,19 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
         }
     };
 
+    const handleDeleteChannel = async (channelId: string) => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            await removeChannel(supabase, user.id, channelId);
+            setChannels((prev) => prev.filter((ch) => ch.id !== channelId));
+        } catch (err) {
+            console.error("Failed to remove channel:", err);
+            alert("Failed to remove channel.");
+        }
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") handleAddChannel();
     };
@@ -74,15 +87,68 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
+                // Sign in with YouTube read-only scope
                 await supabase.auth.signInWithOAuth({
                     provider: "google",
-                    options: { redirectTo: `${window.location.origin}/auth/callback` },
+                    options: {
+                        redirectTo: `${window.location.origin}/auth/callback`,
+                        scopes: "https://www.googleapis.com/auth/youtube.readonly",
+                    },
                 });
                 return;
             }
-            alert("Google Subs sync coming soon! For now, add channels manually (e.g. paste 'fireship' or 'UCsBjURrPoezykLs9EqgamOA').");
+
+            // Get the provider token from the session
+            const { data: { session } } = await supabase.auth.getSession();
+            const providerToken = session?.provider_token;
+
+            if (!providerToken) {
+                // Re-auth to get a fresh token with the right scope
+                await supabase.auth.signInWithOAuth({
+                    provider: "google",
+                    options: {
+                        redirectTo: `${window.location.origin}/auth/callback`,
+                        scopes: "https://www.googleapis.com/auth/youtube.readonly",
+                    },
+                });
+                return;
+            }
+
+            // Fetch YouTube subscriptions
+            const res = await fetch(
+                "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50",
+                { headers: { Authorization: `Bearer ${providerToken}` } }
+            );
+
+            if (!res.ok) {
+                throw new Error(`YouTube API error: ${res.status}`);
+            }
+
+            const data = await res.json();
+            const items = data.items || [];
+
+            let addedCount = 0;
+            for (const item of items) {
+                const channelId = item.snippet.resourceId.channelId;
+                const channelName = item.snippet.title;
+                const channelAvatar = item.snippet.thumbnails?.default?.url || "";
+
+                try {
+                    const ch = await addChannel(supabase, channelId, channelName, channelAvatar);
+                    await subscribeToChannel(supabase, user.id, ch.id);
+                    addedCount++;
+                } catch {
+                    // Skip channels that fail to add
+                }
+            }
+
+            // Refresh the list
+            const subs = await getUserChannels(supabase, user.id);
+            setChannels(subs);
+            alert(`Synced ${addedCount} channels from your YouTube subscriptions!`);
         } catch (err) {
             console.error("Sync failed:", err);
+            alert("Failed to sync subscriptions. Make sure you've granted YouTube access.");
         } finally {
             setSyncing(false);
         }
@@ -150,9 +216,17 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
                             {channels.length > 0 && (
                                 <div className="sidebar__channels mt-4">
                                     {channels.map((ch, i) => (
-                                        <div key={i} className="sidebar__channel-item">
+                                        <div key={ch.id || i} className="sidebar__channel-item">
                                             <span className="sidebar__channel-icon">📡</span>
                                             <span className="sidebar__channel-url">{ch.name}</span>
+                                            <button
+                                                className="sidebar__channel-delete"
+                                                onClick={() => handleDeleteChannel(ch.id)}
+                                                aria-label={`Remove ${ch.name}`}
+                                                title="Remove channel"
+                                            >
+                                                🗑️
+                                            </button>
                                         </div>
                                     ))}
                                 </div>

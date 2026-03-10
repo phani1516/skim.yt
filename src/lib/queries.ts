@@ -3,7 +3,7 @@ import type { Video } from "@/data/mockVideos";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;
 
-/** Fetch videos for the user's subscribed channels (excluding already swiped videos) */
+/** Fetch videos for the user's subscribed channels (carousel — no swipe filtering) */
 export async function fetchFeedVideos(
     supabase: SupabaseClient,
     userId: string
@@ -21,18 +21,8 @@ export async function fetchFeedVideos(
     // If they aren't subscribed to anything, return empty array
     if (subscribedChannelIds.length === 0) return [];
 
-    // 2. Get videos they have already swiped on
-    const { data: swipes } = await supabase
-        .from("swipe_history")
-        .select("video_id")
-        .eq("user_id", userId);
-
-    const swipedVideoIds = (swipes ?? []).map(
-        (s: { video_id: string }) => s.video_id
-    );
-
-    // 3. Fetch the actual feed
-    let query = supabase
+    // 2. Fetch the feed — no swipe_history exclusion (carousel model keeps all cards)
+    const { data, error } = await supabase
         .from("videos")
         .select(
             `
@@ -49,14 +39,7 @@ export async function fetchFeedVideos(
         )
         .in("channel_id", subscribedChannelIds)
         .order("published_at", { ascending: false })
-        .limit(30);
-
-    // Supabase throws an error if you pass an empty array to .not("id", "in", [])
-    if (swipedVideoIds.length > 0) {
-        query = query.not("id", "in", `(${swipedVideoIds.join(",")})`);
-    }
-
-    const { data, error } = await query;
+        .limit(100);
 
     if (error) throw error;
 
@@ -75,7 +58,7 @@ export async function fetchFeedVideos(
     }));
 }
 
-/** Record a swipe action */
+/** Record a swipe action (legacy — kept for backward compat) */
 export async function recordSwipe(
     supabase: SupabaseClient,
     userId: string,
@@ -87,6 +70,51 @@ export async function recordSwipe(
         .upsert({ user_id: userId, video_id: videoId, direction });
 
     if (error) throw error;
+}
+
+/** Toggle a video as favorite — insert if not exists, delete if exists */
+export async function toggleFavorite(
+    supabase: SupabaseClient,
+    userId: string,
+    videoId: string
+): Promise<boolean> {
+    // Check if already favorited
+    const { data: existing } = await supabase
+        .from("user_favorites")
+        .select("user_id")
+        .eq("user_id", userId)
+        .eq("video_id", videoId)
+        .maybeSingle();
+
+    if (existing) {
+        // Remove favorite
+        await supabase
+            .from("user_favorites")
+            .delete()
+            .eq("user_id", userId)
+            .eq("video_id", videoId);
+        return false; // no longer favorited
+    } else {
+        // Add favorite
+        await supabase
+            .from("user_favorites")
+            .insert({ user_id: userId, video_id: videoId });
+        return true; // now favorited
+    }
+}
+
+/** Get user's favorited video IDs */
+export async function getUserFavorites(
+    supabase: SupabaseClient,
+    userId: string
+): Promise<string[]> {
+    const { data, error } = await supabase
+        .from("user_favorites")
+        .select("video_id")
+        .eq("user_id", userId);
+
+    if (error) return [];
+    return (data ?? []).map((row: { video_id: string }) => row.video_id);
 }
 
 /** Add a channel by YouTube ID (find-or-create to avoid RLS upsert issues) */
@@ -129,6 +157,21 @@ export async function subscribeToChannel(
     const { error } = await supabase
         .from("user_channels")
         .upsert({ user_id: userId, channel_id: channelId });
+
+    if (error) throw error;
+}
+
+/** Remove a channel subscription for the user */
+export async function removeChannel(
+    supabase: SupabaseClient,
+    userId: string,
+    channelId: string
+) {
+    const { error } = await supabase
+        .from("user_channels")
+        .delete()
+        .eq("user_id", userId)
+        .eq("channel_id", channelId);
 
     if (error) throw error;
 }

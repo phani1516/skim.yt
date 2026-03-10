@@ -2,8 +2,8 @@ name: Skim.yt Daily ETL
 
 on:
   schedule:
-    # Runs at 2:00 AM and 2:00 PM UTC every day
-    - cron: '0 2,14 * * *'
+    # Runs every 4 hours to check for fresh content
+    - cron: '0 */4 * * *'
   workflow_dispatch: # Adds a "Run workflow" button in GitHub Actions UI
 
 jobs:

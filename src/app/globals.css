@@ -356,6 +356,24 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.sidebar__channel-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  border-radius: 6px;
+  opacity: 0.4;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sidebar__channel-delete:hover {
+  opacity: 1;
+  background: rgba(255, 68, 68, 0.15);
 }
 
 /* ===================================================
@@ -443,9 +461,9 @@ body {
   background: radial-gradient(
     ellipse at 50% 30%,
     transparent 0%,
-    rgba(0, 0, 0, 0.3) 30%,
-    rgba(0, 0, 0, 0.7) 60%,
-    rgba(0, 0, 0, 0.92) 100%
+    rgba(0, 0, 0, 0.4) 30%,
+    rgba(0, 0, 0, 0.85) 60%,
+    rgba(0, 0, 0, 0.98) 100%
   );
 }
 
@@ -647,4 +665,153 @@ body {
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
+}
+
+/* ===================================================
+   FAVORITE BUTTON
+   =================================================== */
+.skim-card__favorite-btn {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+
+.skim-card__favorite-btn:hover {
+  background: rgba(255, 68, 68, 0.15);
+  border-color: rgba(255, 68, 68, 0.3);
+  color: #ff6b6b;
+  transform: scale(1.1);
+}
+
+.skim-card__favorite-btn--active {
+  background: rgba(255, 68, 68, 0.2);
+  border-color: rgba(255, 68, 68, 0.4);
+  color: #ff4444;
+}
+
+.skim-card__favorite-btn--active:hover {
+  background: rgba(255, 68, 68, 0.3);
+}
+
+/* Avatar fallback */
+.skim-card__channel-avatar-fallback {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, rgba(255, 68, 68, 0.3), rgba(255, 120, 120, 0.15));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+}
+
+/* ===================================================
+   CAROUSEL INDICATORS
+   =================================================== */
+.swipe-deck__indicators {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+
+.swipe-deck__indicator-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ===================================================
+   USER DROPDOWN MENU
+   =================================================== */
+.user-menu {
+  position: relative;
+}
+
+.user-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  background: rgba(15, 15, 20, 0.9);
+  backdrop-filter: blur(40px) saturate(1.5);
+  -webkit-backdrop-filter: blur(40px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 6px;
+  z-index: 100;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: dropdown-enter 0.2s ease;
+}
+
+@keyframes dropdown-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.user-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.user-menu__item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.user-menu__item--danger:hover {
+  background: rgba(255, 68, 68, 0.12);
+  color: #ff6b6b;
+}
+
+.user-menu__icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.user-menu__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 8px;
 }
