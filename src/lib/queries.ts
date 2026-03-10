@@ -98,11 +98,14 @@ export async function addChannel(
 ) {
     const { data, error } = await supabase
         .from("channels")
-        .upsert({
-            youtube_id: youtubeId,
-            name,
-            avatar_url: avatarUrl ?? null,
-        })
+        .upsert(
+            {
+                youtube_id: youtubeId,
+                name,
+                avatar_url: avatarUrl ?? null,
+            },
+            { onConflict: "youtube_id" }
+        )
         .select()
         .single();
 

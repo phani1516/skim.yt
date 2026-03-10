@@ -108,49 +108,55 @@ def run_pipeline():
     channels = channels_response.data
     
     for channel in channels:
-        print(f"\n📡 Checking {channel['name']}...")
-        videos = get_channel_uploads(channel['youtube_id'])
-        
-        for video in videos:
-            vid_id = video['snippet']['resourceId']['videoId']
-            title = video['snippet']['title']
-            thumb = video['snippet']['thumbnails']['high']['url']
-            published = video['snippet']['publishedAt']
+        try:
+            print(f"\n✅ Checking {channel['name']}...")
+            videos = get_channel_uploads(channel['youtube_id'])
             
-            # Check if we already summarized this video
-            existing = supabase.table('videos').select('id').eq('video_id', vid_id).execute()
-            if existing.data:
-                print(f"  ⏭️ Already processed: {title[:30]}...")
-                continue
+            for video in videos:
+                vid_id = video['snippet']['resourceId']['videoId']
+                title = video['snippet']['title']
+                thumb = video['snippet']['thumbnails']['high']['url']
+                published = video['snippet']['publishedAt']
                 
-            print(f"  📥 Processing: {title[:30]}...")
-            
-            # Extract Transcript
-            transcript = get_transcript(vid_id)
-            if not transcript:
-                continue
+                # Check if we already summarized this video
+                existing = supabase.table('videos').select('id').eq('video_id', vid_id).execute()
+                if existing.data:
+                    print(f"  ⏭️ Already processed: {title[:30]}...")
+                    continue
+                    
+                print(f"  📥 Processing: {title[:30]}...")
                 
-            # Transform: AI Summarization
-            print("  🧠 AI is reading...")
-            ai_result = extract_nuggets(transcript, title)
-            
-            # Load: Push to Supabase
-            video_data = {
-                "video_id": vid_id,
-                "channel_id": channel['id'],
-                "title": title,
-                "thumbnail_url": thumb,
-                "video_url": f"https://www.youtube.com/watch?v={vid_id}",
-                "published_at": published,
-                "is_high_signal": ai_result['is_high_signal'],
-                "nuggets": ai_result['nuggets']
-            }
-            
-            supabase.table('videos').insert(video_data).execute()
-            print("  ✅ Saved to Database!")
-            
-            # Respect Gemini free tier rate limit (5 req/min)
-            time.sleep(15)
+                # Extract Transcript
+                transcript = get_transcript(vid_id)
+                if not transcript:
+                    print(f"  ⚠️ Skipping {title[:30]} (no transcript available)")
+                    continue
+                    
+                # Transform: AI Summarization
+                print("  🧠 AI is reading...")
+                ai_result = extract_nuggets(transcript, title)
+                
+                # Load: Push to Supabase
+                video_data = {
+                    "video_id": vid_id,
+                    "channel_id": channel['id'],
+                    "title": title,
+                    "thumbnail_url": thumb,
+                    "video_url": f"https://www.youtube.com/watch?v={vid_id}",
+                    "published_at": published,
+                    "is_high_signal": ai_result['is_high_signal'],
+                    "nuggets": ai_result['nuggets']
+                }
+                
+                supabase.table('videos').insert(video_data).execute()
+                print("  ✅ Saved to Database!")
+                
+                # Respect Gemini free tier rate limit (5 req/min)
+                time.sleep(15)
+        except Exception as e:
+            print(f"\n  ❌ Error processing channel '{channel['name']}': {e}")
+            print("  ➡️ Skipping to next channel...")
+            continue
 
 if __name__ == "__main__":
     run_pipeline()
