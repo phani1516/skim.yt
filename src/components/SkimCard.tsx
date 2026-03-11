@@ -9,6 +9,30 @@ interface SkimCardProps {
     onToggleFavorite?: () => void;
 }
 
+/** Format ISO 8601 date string into a clean relative or absolute date */
+function formatDate(isoString: string): string {
+    try {
+        const date = new Date(isoString);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffHours < 1) return "Just now";
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+
+        return date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+        });
+    } catch {
+        return "";
+    }
+}
+
 export default function SkimCard({ video, isFavorited = false, onToggleFavorite }: SkimCardProps) {
     const [avatarError, setAvatarError] = useState(false);
 
@@ -40,6 +64,14 @@ export default function SkimCard({ video, isFavorited = false, onToggleFavorite 
                         </div>
                     )}
                     <span className="skim-card__channel-name">{video.channelName}</span>
+
+                    {/* Upload date */}
+                    {video.publishedAt && (
+                        <span className="skim-card__date">
+                            {formatDate(video.publishedAt)}
+                        </span>
+                    )}
+
                     {video.isHighSignal && (
                         <span className="skim-card__signal-badge">★ High Signal</span>
                     )}

@@ -526,6 +526,13 @@ body {
   letter-spacing: 0.2px;
 }
 
+.skim-card__date {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+}
+
 .skim-card__signal-badge {
   font-size: 10px;
   font-weight: 700;

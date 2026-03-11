@@ -24,25 +24,70 @@ genai.configure(api_key=GEMINI_API_KEY)
 # Use the free and fast Gemini Flash model
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-def get_channel_uploads(channel_id):
-    """Fetches the latest videos from a channel. Resolves handles to real IDs if needed."""
-    try:
-        # If not a real channel ID (UC...), resolve via YouTube search API
-        if not channel_id.startswith('UC'):
-            search_query = channel_id.lstrip('@')
-            search_response = youtube.search().list(
+def resolve_channel(channel_row):
+    """Resolves a channel's youtube_id to a real UC... ID if needed.
+    Also fetches and updates the channel's name and avatar in Supabase."""
+    youtube_id = channel_row['youtube_id']
+    db_id = channel_row['id']
+    
+    # Already a real channel ID — just fetch metadata if name/avatar is missing
+    if youtube_id.startswith('UC'):
+        # Fetch channel metadata to update name and avatar
+        try:
+            ch_response = youtube.channels().list(
                 part="snippet",
-                q=search_query,
-                type="channel",
-                maxResults=1
+                id=youtube_id
             ).execute()
-            items = search_response.get('items', [])
-            if not items:
-                print(f"  ⚠️ Could not resolve handle '{channel_id}' to a channel ID")
-                return []
-            channel_id = items[0]['snippet']['channelId']
-            print(f"  🔗 Resolved to channel ID: {channel_id}")
+            items = ch_response.get('items', [])
+            if items:
+                snippet = items[0]['snippet']
+                real_name = snippet['title']
+                avatar_url = snippet['thumbnails']['default']['url']
+                supabase.table('channels').update({
+                    'name': real_name,
+                    'avatar_url': avatar_url
+                }).eq('id', db_id).execute()
+                print(f"  📇 Updated metadata: {real_name}")
+        except Exception as e:
+            print(f"  ⚠️ Could not fetch metadata for {youtube_id}: {e}")
+        return youtube_id
+    
+    # Not a UC... ID — resolve via YouTube Search API
+    search_query = youtube_id.lstrip('@')
+    print(f"  🔍 Resolving handle '{youtube_id}'...")
+    
+    try:
+        search_response = youtube.search().list(
+            part="snippet",
+            q=search_query,
+            type="channel",
+            maxResults=1
+        ).execute()
+        items = search_response.get('items', [])
+        if not items:
+            print(f"  ⚠️ Could not resolve '{youtube_id}' to a channel")
+            return None
+        
+        resolved_id = items[0]['snippet']['channelId']
+        channel_title = items[0]['snippet']['channelTitle']
+        avatar_url = items[0]['snippet']['thumbnails']['default']['url']
+        
+        # CRITICAL: Update the channels table with the real ID, name, and avatar
+        supabase.table('channels').update({
+            'youtube_id': resolved_id,
+            'name': channel_title,
+            'avatar_url': avatar_url
+        }).eq('id', db_id).execute()
+        
+        print(f"  ✅ Resolved: {youtube_id} → {resolved_id} ({channel_title})")
+        return resolved_id
+    except Exception as e:
+        print(f"  ❌ Error resolving '{youtube_id}': {e}")
+        return None
 
+def get_channel_uploads(channel_id):
+    """Fetches the latest videos from a channel using its UC... ID."""
+    try:
         # YouTube channel IDs start with UC. Their upload playlist replaces it with UU.
         upload_playlist_id = channel_id.replace('UC', 'UU', 1)
 
@@ -108,11 +153,24 @@ def run_pipeline():
     channels_response = supabase.table('channels').select('id, youtube_id, name').execute()
     channels = channels_response.data
     
+    print(f"📡 Found {len(channels)} channels to process\n")
+    
     for channel in channels:
         try:
-            print(f"\n✅ Checking {channel['name']}...")
-            videos = get_channel_uploads(channel['youtube_id'])
+            print(f"\n{'='*50}")
+            print(f"📺 Processing: {channel['name']} ({channel['youtube_id']})")
             
+            # Step 1: Resolve handle → real UC... ID (and update DB with metadata)
+            resolved_id = resolve_channel(channel)
+            if not resolved_id:
+                print(f"  ⏭️ Skipping — could not resolve channel")
+                continue
+            
+            # Step 2: Fetch recent uploads
+            videos = get_channel_uploads(resolved_id)
+            print(f"  📹 Found {len(videos)} recent videos")
+            
+            processed = 0
             for video in videos:
                 vid_id = video['snippet']['resourceId']['videoId']
                 title = video['snippet']['title']
@@ -122,19 +180,18 @@ def run_pipeline():
                 # Check if we already summarized this video
                 existing = supabase.table('videos').select('id').eq('video_id', vid_id).execute()
                 if existing.data:
-                    print(f"  ⏭️ Already processed: {title[:30]}...")
                     continue
                     
-                print(f"  📥 Processing: {title[:30]}...")
+                print(f"  📥 New video: {title[:50]}...")
                 
                 # Extract Transcript
                 transcript = get_transcript(vid_id)
                 if not transcript:
-                    print(f"  ⚠️ Skipping {title[:30]} (no transcript available)")
+                    print(f"  ⚠️ No transcript — skipping")
                     continue
                     
                 # Transform: AI Summarization
-                print("  🧠 AI is reading...")
+                print("  🧠 AI is summarizing...")
                 ai_result = extract_nuggets(transcript, title)
                 
                 # Load: Push to Supabase
@@ -150,14 +207,20 @@ def run_pipeline():
                 }
                 
                 supabase.table('videos').insert(video_data).execute()
-                print("  ✅ Saved to Database!")
+                processed += 1
+                print(f"  ✅ Saved! (nuggets: {len(ai_result['nuggets'])})")
                 
                 # Respect Gemini free tier rate limit (5 req/min)
                 time.sleep(15)
+            
+            print(f"  📊 {processed} new videos processed for {channel['name']}")
         except Exception as e:
             print(f"\n  ❌ Error processing channel '{channel['name']}': {e}")
             print("  ➡️ Skipping to next channel...")
             continue
+    
+    print(f"\n{'='*50}")
+    print("🏁 Pipeline complete!")
 
 if __name__ == "__main__":
     run_pipeline()
