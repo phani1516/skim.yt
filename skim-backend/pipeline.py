@@ -7,6 +7,7 @@ from supabase import create_client, Client
 import google.generativeai as genai
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
+import time
 
 # 1. Load Environment Variables
 from pathlib import Path
@@ -141,88 +142,111 @@ def extract_nuggets(transcript, title):
             return json.loads(response.text)
         except Exception as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                wait = 15 * (attempt + 1)
-                print(f"  [Rate limit] Waiting {wait}s before retry...")
-                time.sleep(wait)
+                wait_time = 15 * (attempt + 1)
+                print(f"  [Rate limit] Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
             else:
                 raise
     raise Exception("Failed after 3 retries")
 
-def run_pipeline():
-    print("🚀 Starting Skim.yt ETL Pipeline...")
-    
-    # Extract: Get all channels from our database
-    channels_response = supabase.table('channels').select('id, youtube_id, name').execute()
-    channels = channels_response.data
-    
-    print(f"📡 Found {len(channels)} channels to process\n")
-    
-    for channel in channels:
-        try:
-            print(f"\n{'='*50}")
-            print(f"📺 Processing: {channel['name']} ({channel['youtube_id']})")
+def process_channel(channel):
+    try:
+        print(f"\n{'='*50}")
+        print(f"📺 Processing: {channel['name']} ({channel['youtube_id']})")
+        
+        # Step 1: Resolve handle → real UC... ID (and update DB with metadata)
+        resolved_id = resolve_channel(channel)
+        if not resolved_id:
+            print(f"  ⏭️ Skipping — could not resolve channel")
+            return
+        
+        # Step 2: Fetch recent uploads
+        videos = get_channel_uploads(resolved_id)
+        print(f"  📹 Found {len(videos)} recent videos")
+        
+        processed = 0
+        for video in videos:
+            vid_id = video['snippet']['resourceId']['videoId']
+            title = video['snippet']['title']
+            thumb = video['snippet']['thumbnails']['high']['url']
+            published = video['snippet']['publishedAt']
             
-            # Step 1: Resolve handle → real UC... ID (and update DB with metadata)
-            resolved_id = resolve_channel(channel)
-            if not resolved_id:
-                print(f"  ⏭️ Skipping — could not resolve channel")
+            # Check if we already summarized this video
+            existing = supabase.table('videos').select('id').eq('video_id', vid_id).execute()
+            if existing.data:
                 continue
-            
-            # Step 2: Fetch recent uploads
-            videos = get_channel_uploads(resolved_id)
-            print(f"  📹 Found {len(videos)} recent videos")
-            
-            processed = 0
-            for video in videos:
-                vid_id = video['snippet']['resourceId']['videoId']
-                title = video['snippet']['title']
-                thumb = video['snippet']['thumbnails']['high']['url']
-                published = video['snippet']['publishedAt']
                 
-                # Check if we already summarized this video
-                existing = supabase.table('videos').select('id').eq('video_id', vid_id).execute()
-                if existing.data:
-                    continue
+            print(f"  📥 New video: {title[:50]}...")
+            
+            # Extract Transcript
+            transcript = get_transcript(vid_id)
+            if not transcript:
+                print(f"  ⚠️ No transcript — skipping")
+                continue
+                
+            # Transform: AI Summarization
+            print("  🧠 AI is summarizing...")
+            ai_result = extract_nuggets(transcript, title)
+            
+            # Load: Push to Supabase
+            video_data = {
+                "video_id": vid_id,
+                "channel_id": channel['id'],
+                "title": title,
+                "thumbnail_url": thumb,
+                "video_url": f"https://www.youtube.com/watch?v={vid_id}",
+                "published_at": published,
+                "is_high_signal": ai_result['is_high_signal'],
+                "nuggets": ai_result['nuggets']
+            }
+            
+            supabase.table('videos').insert(video_data).execute()
+            processed += 1
+            print(f"  ✅ Saved! (nuggets: {len(ai_result['nuggets'])})")
+            
+            # Respect Gemini free tier rate limit (15 req/min)
+            time.sleep(15)
+        
+        print(f"  📊 {processed} new videos processed for {channel['name']}")
+    except Exception as e:
+        print(f"\n  ❌ Error processing channel '{channel['name']}': {e}")
+        print("  ➡️ Skipping to next channel...")
+
+def run_worker():
+    print("🚀 Starting real-time Skim.yt ETL Worker...")
+    visited_channels = set()
+    last_full_sync = 0
+    SYNC_INTERVAL = 14400 # 4 hours
+
+    while True:
+        try:
+            now = time.time()
+            is_full_sync = (now - last_full_sync) > SYNC_INTERVAL
+            
+            # Fetch channels from Supabase
+            channels_response = supabase.table('channels').select('id, youtube_id, name').execute()
+            channels = channels_response.data
+            
+            for channel in channels:
+                chan_id = channel['id']
+                if is_full_sync or chan_id not in visited_channels:
+                    if is_full_sync and chan_id in visited_channels:
+                        print(f"🔄 Full Sync for existing channel: {channel['name']}")
+                    else:
+                        print(f"⚡ New Channel Detected: {channel['name']}")
                     
-                print(f"  📥 New video: {title[:50]}...")
-                
-                # Extract Transcript
-                transcript = get_transcript(vid_id)
-                if not transcript:
-                    print(f"  ⚠️ No transcript — skipping")
-                    continue
-                    
-                # Transform: AI Summarization
-                print("  🧠 AI is summarizing...")
-                ai_result = extract_nuggets(transcript, title)
-                
-                # Load: Push to Supabase
-                video_data = {
-                    "video_id": vid_id,
-                    "channel_id": channel['id'],
-                    "title": title,
-                    "thumbnail_url": thumb,
-                    "video_url": f"https://www.youtube.com/watch?v={vid_id}",
-                    "published_at": published,
-                    "is_high_signal": ai_result['is_high_signal'],
-                    "nuggets": ai_result['nuggets']
-                }
-                
-                supabase.table('videos').insert(video_data).execute()
-                processed += 1
-                print(f"  ✅ Saved! (nuggets: {len(ai_result['nuggets'])})")
-                
-                # Respect Gemini free tier rate limit (5 req/min)
-                time.sleep(15)
+                    process_channel(channel)
+                    visited_channels.add(chan_id)
             
-            print(f"  📊 {processed} new videos processed for {channel['name']}")
+            if is_full_sync:
+                last_full_sync = time.time()
+                print(f"💤 Sync complete. Sleeping... Polling for new channels every 30 seconds.")
+                
         except Exception as e:
-            print(f"\n  ❌ Error processing channel '{channel['name']}': {e}")
-            print("  ➡️ Skipping to next channel...")
-            continue
-    
-    print(f"\n{'='*50}")
-    print("🏁 Pipeline complete!")
+            print(f"Worker iteration error: {e}")
+            
+        # Poll every 30 seconds for new channels
+        time.sleep(30)
 
 if __name__ == "__main__":
-    run_pipeline()
+    run_worker()
