@@ -117,11 +117,11 @@ def get_transcript(video_id):
         print(f"Transcript unavailable for {video_id}: {e}")
         return None
 
-def extract_nuggets(transcript, title):
+def extract_nuggets(content_text, title):
     """The Ruthless Editor Prompt — with rate-limit retry."""
     prompt = f"""
     You are a ruthless editor for a tech news aggregator. 
-    Analyze this video transcript (Title: "{title}").
+    Analyze this video context (Title: "{title}").
     
     Rule 1: If the video is mostly fluff, repetition, or has no highly actionable/novel tech insights, output exactly: {{"is_high_signal": false, "nuggets": []}}
     Rule 2: If the video contains highly valuable, novel information, extract exactly 6 to 7 bullet points.
@@ -133,7 +133,7 @@ def extract_nuggets(transcript, title):
       "nuggets": ["point 1", "point 2", "point 3", "point 4", "point 5", "point 6"]
     }}
     
-    Transcript: {transcript[:25000]}
+    Context: {content_text[:25000]}
     """
     
     for attempt in range(3):
@@ -170,6 +170,7 @@ def process_channel(channel):
             title = video['snippet']['title']
             thumb = video['snippet']['thumbnails']['high']['url']
             published = video['snippet']['publishedAt']
+            description = video['snippet'].get('description', '')
             
             # Check if we already summarized this video
             existing = supabase.table('videos').select('id').eq('video_id', vid_id).execute()
@@ -178,15 +179,21 @@ def process_channel(channel):
                 
             print(f"  📥 New video: {title[:50]}...")
             
-            # Extract Transcript
+            # Extract Content (Transcript or Fallback to Description)
+            target_text = ""
             transcript = get_transcript(vid_id)
-            if not transcript:
-                print(f"  ⚠️ No transcript — skipping")
+            if transcript:
+                target_text = transcript
+                print("  🧠 AI is summarizing transcript...")
+            elif description.strip():
+                target_text = description
+                print("  ⚠️ No transcript — falling back to video description...")
+            else:
+                print(f"  ⚠️ No transcript or description — skipping")
                 continue
                 
             # Transform: AI Summarization
-            print("  🧠 AI is summarizing...")
-            ai_result = extract_nuggets(transcript, title)
+            ai_result = extract_nuggets(target_text, title)
             
             # Load: Push to Supabase
             video_data = {
