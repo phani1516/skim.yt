@@ -9,7 +9,9 @@ from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 
 # 1. Load Environment Variables
-load_dotenv()
+from pathlib import Path
+dotenv_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=dotenv_path)
 sys.stdout.reconfigure(encoding='utf-8')  # Fix Windows emoji output
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") # Use service key to bypass Row Level Security

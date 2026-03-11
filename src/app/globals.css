@@ -460,10 +460,10 @@ body {
   inset: 0;
   background: radial-gradient(
     ellipse at 50% 30%,
-    transparent 0%,
-    rgba(0, 0, 0, 0.4) 30%,
-    rgba(0, 0, 0, 0.85) 60%,
-    rgba(0, 0, 0, 0.98) 100%
+    rgba(0, 0, 0, 0.2) 0%,
+    rgba(0, 0, 0, 0.6) 30%,
+    rgba(0, 0, 0, 0.95) 60%,
+    rgba(0, 0, 0, 1) 100%
   );
 }
 
