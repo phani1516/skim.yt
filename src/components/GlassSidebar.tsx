@@ -14,7 +14,6 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
     const [channelUrl, setChannelUrl] = useState("");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [channels, setChannels] = useState<any[]>([]);
-    const [syncing, setSyncing] = useState(false);
     const [loading, setLoading] = useState(false);
     const supabase = createClient();
 
@@ -41,25 +40,32 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
                 return;
             }
 
-            // Extract a handle or ID from the pasted text (basic logic)
+            // Extract a handle or ID from the pasted text
+            // Supports: UC..., @handle, youtube.com/... URLs
             let youtubeId = channelUrl.trim();
             if (youtubeId.includes("youtube.com/")) {
                 youtubeId = youtubeId.split("/").pop() || youtubeId;
             }
+            // Strip leading @ for cleaner storage (backend resolves handles)
+            youtubeId = youtubeId.replace(/^@/, "");
 
-            // 1. Add to channels table
+            // 1. Add to channels table (backend pipeline resolves @handles to UC... IDs)
             const newChannel = await addChannel(supabase, youtubeId, youtubeId, "");
 
             // 2. Subscribe the user
             await subscribeToChannel(supabase, user.id, newChannel.id);
 
-            setChannels((prev) => [...prev, newChannel]);
+            // Avoid duplicate entries in local state
+            setChannels((prev) => {
+                if (prev.some((ch) => ch.id === newChannel.id)) return prev;
+                return [...prev, newChannel];
+            });
             setChannelUrl("");
-            alert("Channel added! Refresh the page to load videos.");
+            alert("Channel added! Videos will appear after the next pipeline run.");
 
         } catch (err) {
             console.error(err);
-            alert("Failed to add channel. It might already exist.");
+            alert("Failed to add channel. Please check the ID or handle.");
         } finally {
             setLoading(false);
         }
@@ -80,78 +86,6 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") handleAddChannel();
-    };
-
-    const handleSyncGoogleSubs = async () => {
-        setSyncing(true);
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                // Sign in with YouTube read-only scope
-                await supabase.auth.signInWithOAuth({
-                    provider: "google",
-                    options: {
-                        redirectTo: `${window.location.origin}/auth/callback`,
-                        scopes: "https://www.googleapis.com/auth/youtube.readonly",
-                    },
-                });
-                return;
-            }
-
-            // Get the provider token from the session
-            const { data: { session } } = await supabase.auth.getSession();
-            const providerToken = session?.provider_token;
-
-            if (!providerToken) {
-                // Re-auth to get a fresh token with the right scope
-                await supabase.auth.signInWithOAuth({
-                    provider: "google",
-                    options: {
-                        redirectTo: `${window.location.origin}/auth/callback`,
-                        scopes: "https://www.googleapis.com/auth/youtube.readonly",
-                    },
-                });
-                return;
-            }
-
-            // Fetch YouTube subscriptions
-            const res = await fetch(
-                "https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50",
-                { headers: { Authorization: `Bearer ${providerToken}` } }
-            );
-
-            if (!res.ok) {
-                throw new Error(`YouTube API error: ${res.status}`);
-            }
-
-            const data = await res.json();
-            const items = data.items || [];
-
-            let addedCount = 0;
-            for (const item of items) {
-                const channelId = item.snippet.resourceId.channelId;
-                const channelName = item.snippet.title;
-                const channelAvatar = item.snippet.thumbnails?.default?.url || "";
-
-                try {
-                    const ch = await addChannel(supabase, channelId, channelName, channelAvatar);
-                    await subscribeToChannel(supabase, user.id, ch.id);
-                    addedCount++;
-                } catch {
-                    // Skip channels that fail to add
-                }
-            }
-
-            // Refresh the list
-            const subs = await getUserChannels(supabase, user.id);
-            setChannels(subs);
-            alert(`Synced ${addedCount} channels from your YouTube subscriptions!`);
-        } catch (err) {
-            console.error("Sync failed:", err);
-            alert("Failed to sync subscriptions. Make sure you've granted YouTube access.");
-        } finally {
-            setSyncing(false);
-        }
     };
 
     return (
@@ -187,7 +121,7 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
                             <div className="sidebar__add-channel">
                                 <input
                                     type="text"
-                                    placeholder="Paste YouTube ID or handle..."
+                                    placeholder="Channel ID or @handle..."
                                     value={channelUrl}
                                     onChange={(e) => setChannelUrl(e.target.value)}
                                     onKeyDown={handleKeyDown}
@@ -202,19 +136,8 @@ export default function GlassSidebar({ isOpen, onClose }: GlassSidebarProps) {
                                 </button>
                             </div>
 
-                            <button
-                                className="sidebar__sync-btn"
-                                onClick={handleSyncGoogleSubs}
-                                disabled={syncing}
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m0 0a9 9 0 0 1 9-9m-9 9a9 9 0 0 0 9 9" />
-                                </svg>
-                                {syncing ? "Syncing..." : "Sync Google Subs"}
-                            </button>
-
                             {channels.length > 0 && (
-                                <div className="sidebar__channels mt-4">
+                                <div className="sidebar__channels">
                                     {channels.map((ch, i) => (
                                         <div key={ch.id || i} className="sidebar__channel-item">
                                             <span className="sidebar__channel-icon">📡</span>
